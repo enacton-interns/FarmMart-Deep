@@ -56,8 +56,6 @@ class UserModel {
   async update(id: string, userData: Partial<IUser>): Promise<IUser | null> {
     const { name, role, address, phone } = userData;
 
-    console.log('UserModel.update called with:', { id, userData });
-
     // Build dynamic query based on provided fields
     let query = 'UPDATE users SET updated_at = NOW()';
     const values: any[] = [];
@@ -90,11 +88,7 @@ class UserModel {
     query += ` WHERE id = $${paramIndex} RETURNING id, email, name, role, address, phone, created_at, updated_at`;
     values.push(id);
 
-    console.log('Executing query:', query);
-    console.log('With values:', values);
-
     const result = await this.pool.query(query, values);
-    console.log('Query result:', result.rows);
 
     return result.rows[0] || null;
   }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { NotificationModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 
 export async function POST(
   request: NextRequest,
@@ -9,15 +9,13 @@ export async function POST(
 ) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = getTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json(
         { error: 'Authorization token required' },
         { status: 401 }
       );
     }
-
-    const token = authHeader.substring(7);
     const decoded = verifyToken(token);
 
     if (!decoded || !decoded.id) {
@@ -125,15 +123,14 @@ export async function DELETE(
 ) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = getTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json(
         { error: 'Authorization token required' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.substring(7);
     const decoded = verifyToken(token);
 
     if (!decoded || !decoded.id) {

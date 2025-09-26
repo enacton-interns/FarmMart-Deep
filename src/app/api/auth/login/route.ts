@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { UserModel } from '@/lib/models';
 import { signToken } from '@/lib/jwt';
-import { rateLimit, validators, accountLockout, sanitizeForSQL } from '@/lib/security';
+import { rateLimit, validators, accountLockout } from '@/lib/security';
 import { isValidEmail } from '@/lib/validation';
 
 export async function POST(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 5, 15 * 60 * 1000)) { // 5 login attempts per 15 minutes
+    if (await rateLimit.check(clientIP, 5, 15 * 60 * 1000)) { // 5 login attempts per 15 minutes
       return NextResponse.json(
         { error: 'Too many login attempts. Please try again later.' },
         { status: 429 }
@@ -48,11 +48,11 @@ export async function POST(request: NextRequest) {
     const { email, password } = loginData;
 
     // Sanitize inputs to prevent injection attacks
-    const sanitizedEmail = sanitizeForSQL(email.toLowerCase().trim());
-    const sanitizedPassword = password.trim();
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const sanitizedPassword = typeof password === 'string' ? password.trim() : '';
 
     // Comprehensive input validation
-    if (!validators.nonEmptyString(sanitizedEmail) || !isValidEmail(sanitizedEmail)) {
+    if (!validators.nonEmptyString(normalizedEmail) || !isValidEmail(normalizedEmail)) {
       return NextResponse.json(
         { error: 'Valid email is required' },
         { status: 400 }
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if account is locked
-    if (accountLockout.isLocked(sanitizedEmail)) {
+    if (await accountLockout.isLocked(normalizedEmail)) {
       return NextResponse.json(
         { error: 'Account is temporarily locked due to too many failed attempts. Try again later.' },
         { status: 429 }
@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
     const userModel = new UserModel(pool);
 
     // Find user by email
-    const user = await userModel.findByEmail(sanitizedEmail);
+    const user = await userModel.findByEmail(normalizedEmail);  
     if (!user) {
       // Record failed attempt for non-existent accounts too (prevents user enumeration)
-      accountLockout.recordFailedAttempt(sanitizedEmail);
+      await accountLockout.recordFailedAttempt(normalizedEmail);
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -92,8 +92,8 @@ export async function POST(request: NextRequest) {
     const isPasswordValid = await userModel.comparePassword(sanitizedPassword, user.password);
     if (!isPasswordValid) {
       // Record failed attempt
-      const isLocked = accountLockout.recordFailedAttempt(sanitizedEmail);
-      const remainingAttempts = accountLockout.getRemainingAttempts(sanitizedEmail);
+      const isLocked = await accountLockout.recordFailedAttempt(normalizedEmail);
+      const remainingAttempts = await accountLockout.getRemainingAttempts(normalizedEmail);
 
       if (isLocked) {
         return NextResponse.json(
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Clear failed attempts on successful login
-    accountLockout.clearFailedAttempts(sanitizedEmail);
+    await accountLockout.clearFailedAttempts(normalizedEmail);
 
     // Generate JWT token
     const token = signToken(user);
@@ -128,14 +128,24 @@ export async function POST(request: NextRequest) {
       createdAt: user.createdAt,
     };
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         message: 'Login successful',
         user: userResponse,
         token,
       },
       { status: 200 }
+      
     );
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

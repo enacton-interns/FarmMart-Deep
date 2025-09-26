@@ -4,7 +4,7 @@ import { ProductModel } from '@/lib/models';
 import { FarmerModel } from '@/lib/models';
 import { UserModel } from '@/lib/models';
 import { NotificationModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import { rateLimit, securityHeaders, validators } from '@/lib/security';
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 100, 15 * 60 * 1000)) { // 100 requests per 15 minutes
+    if (await rateLimit.check(clientIP, 100, 15 * 60 * 1000)) { // 100 requests per 15 minutes
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -21,14 +21,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get token from Authorization header - optional for viewing products
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
-    let decoded = null;
-    if (token) {
-      // Verify token if provided
-      decoded = verifyToken(token);
-    }
+    const decoded = token ? verifyToken(token) : null;
 
     // Get query parameters with validation
     const { searchParams } = new URL(request.url);
@@ -77,8 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     // If farmer=true, filter by farmer's products
-    if (farmerOnly && token) {
-      const decoded = verifyToken(token);
+    if (farmerOnly && decoded) {
       if (decoded && decoded.role === 'farmer') {
         const farmer = await farmerModel.findByUserId(decoded.id);
         if (farmer) {
@@ -107,9 +101,8 @@ export async function GET(request: NextRequest) {
     }
 
     // If user is a farmer browsing as customer, exclude their own products
-    if (token && !farmerOnly) {
-      const decoded = verifyToken(token);
-      if (decoded && decoded.role === 'farmer') {
+    if (decoded && !farmerOnly) {
+      if (decoded.role === 'farmer') {
         const farmer = await farmerModel.findByUserId(decoded.id);
         if (farmer) {
           filters.excludeFarmerId = farmer.id;
@@ -200,7 +193,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 20, 60 * 1000)) { // 20 requests per minute for POST
+    if (await rateLimit.check(clientIP, 20, 60 * 1000)) { // 20 requests per minute for POST
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -208,8 +201,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(
@@ -360,8 +352,6 @@ export async function POST(request: NextRequest) {
     // Get farmer profile
     let farmer = await farmerModel.findByUserId(decoded.id);
     if (!farmer) {
-      console.log('Farmer profile not found for user:', decoded.id);
-      console.log('Creating farmer profile...');
 
       // Try to create a basic farmer profile
       try {
@@ -389,9 +379,7 @@ export async function POST(request: NextRequest) {
           verified: false,
         };
 
-        console.log('Creating farmer profile with data:', farmerData);
         farmer = await farmerModel.create(farmerData);
-        console.log('Farmer profile created successfully:', farmer.id);
       } catch (createError) {
         console.error('Error creating farmer profile:', createError);
         return NextResponse.json(
@@ -416,10 +404,8 @@ export async function POST(request: NextRequest) {
       harvestDate: harvestDate ? new Date(harvestDate) : undefined,
     };
 
-    // Create the product
     const newProduct = await productModel.create(newProductData);
 
-    // Create notification for the farmer
     try {
       const notificationModel = new NotificationModel(pool);
 

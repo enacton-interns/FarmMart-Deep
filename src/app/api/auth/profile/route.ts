@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { UserModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import { validateUpdateProfile } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
 
 export async function PUT(request: NextRequest) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
+    const token = getTokenFromRequest(request);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!token) {
       return NextResponse.json(
         { error: 'Authorization token required' },
         { status: 401 }
       );
     }
-
-    const token = authHeader.substring(7);
 
     const decoded = verifyToken(token);
 
@@ -41,9 +38,9 @@ export async function PUT(request: NextRequest) {
 
     // Sanitize input - allow empty strings to be saved
     const sanitizedData = {
-      name: sanitizeInput(name),
-      address: address !== undefined ? sanitizeInput(address) : undefined,
-      phone: phone !== undefined ? sanitizeInput(phone) : undefined,
+      name: typeof name === 'string' ? name.trim() : undefined,
+      address: typeof address === 'string' ? address.trim() : undefined,
+      phone: typeof phone === 'string' ? phone.trim() : undefined,
     };
 
     // Initialize user model

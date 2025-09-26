@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from './jwt';
+import { getTokenFromRequest, verifyToken } from './jwt';
 
 export function middleware(request: NextRequest) {
   // Get token from Authorization header
-  const authHeader = request.headers.get('authorization');
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  const token = getTokenFromRequest(request);
 
   if (!token) {
     return NextResponse.json(

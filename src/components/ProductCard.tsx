@@ -31,9 +31,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     try {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const response = await fetch(`${baseUrl}/api/products/${product.id}/like/status`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -73,9 +71,7 @@ export default function ProductCard({ product }: ProductCardProps) {
       const method = isLiked ? 'DELETE' : 'POST';
       const response = await fetch(`${baseUrl}/api/products/${product.id}/like`, {
         method,
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {

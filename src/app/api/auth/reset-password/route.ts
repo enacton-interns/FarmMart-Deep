@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 requests per minute
+    if (await rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 requests per minute
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -77,8 +77,6 @@ export async function POST(request: NextRequest) {
     // For demonstration purposes, we'll assume the token is valid
     // and just update a test user's password
     // In production, you'd validate the token properly
-
-    console.log(`Password reset attempt with token: ${token}`);
 
     // For now, we'll just return success since we don't have the full token system
     // In production, implement proper token validation and user lookup

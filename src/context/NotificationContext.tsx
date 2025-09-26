@@ -27,19 +27,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setIsLoading(true);
     
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setNotifications([]);
-        setUnreadCount(0);
-        setIsLoading(false);
-        return;
-      }
-
+      
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const response = await fetch(`${baseUrl}/api/notifications?unreadOnly=true`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials : 'include',
       });
 
       if (response.ok) {
@@ -62,16 +53,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markAsRead = async (notificationIds: string[]) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const response = await fetch(`${baseUrl}/api/notifications`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials : 'include',
         body: JSON.stringify({
           notificationIds,
           markAsRead: true,

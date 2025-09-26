@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { validateUpdateProfile } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
 import { toast } from 'react-toastify';
 
 export default function ProfilePage() {
@@ -55,12 +54,10 @@ export default function ProfilePage() {
     try {
       // Sanitize input
       const sanitizedData = {
-                name: sanitizeInput(formData.name),
-        address: sanitizeInput(formData.address),
-        phone: sanitizeInput(formData.phone),
+        name: formData.name.trim(),
+        address: formData.address.trim(),
+        phone: formData.phone.trim(),
       };
-
-      const token = localStorage.getItem('token');
 
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -68,8 +65,8 @@ export default function ProfilePage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify(sanitizedData),
       });
 

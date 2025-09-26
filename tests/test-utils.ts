@@ -98,9 +98,7 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
 }
 
 export async function getAuthToken(page: Page): Promise<string | null> {
-  // Get token from localStorage or cookies
-  const token = await page.evaluate(() => {
-    return localStorage.getItem('token') || sessionStorage.getItem('token');
-  });
-  return token;
+  const cookies = await page.context().cookies();
+  const tokenCookie = cookies.find((cookie) => cookie.name === 'token');
+  return tokenCookie?.value ?? null;
 }

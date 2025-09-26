@@ -5,14 +5,13 @@ import { UserModel } from '@/lib/models';
 import { FarmerModel } from '@/lib/models';
 import { ProductModel } from '@/lib/models';
 import { NotificationModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import { rateLimit, securityHeaders, validators } from '@/lib/security';
 
 export async function GET(request: NextRequest) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(
@@ -46,26 +45,20 @@ export async function GET(request: NextRequest) {
     // Get orders based on user role
     let orders: any[] = [];
 
-    console.log('Fetching orders for user:', decoded.id, 'with role:', role);
-
     if (role === 'customer') {
       orders = await orderModel.findByUserId(decoded.id);
-      console.log('Found orders for customer:', orders.length);
     } else if (role === 'farmer') {
       // For farmers, find orders that contain their products
       const farmer = await farmerModel.findByUserId(decoded.id);
       if (farmer) {
         // Use the OrderModel's findByFarmerId method
         orders = await orderModel.findByFarmerId(farmer.id);
-        console.log('Found orders for farmer:', orders.length);
       } else {
         orders = [];
-        console.log('No farmer profile found for user');
       }
     } else {
       // Admin can see all orders
       orders = await orderModel.findAll();
-      console.log('Found all orders for admin:', orders.length);
     }
 
     // Filter by status if provided
@@ -154,7 +147,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 orders per minute
+    if (await rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 orders per minute
       return NextResponse.json(
         { error: 'Too many order attempts. Please try again later.' },
         { status: 429 }
@@ -162,8 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(

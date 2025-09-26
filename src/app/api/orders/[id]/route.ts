@@ -5,7 +5,7 @@ import { UserModel } from '@/lib/models';
 import { FarmerModel } from '@/lib/models';
 import { ProductModel } from '@/lib/models';
 import { NotificationModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 
 export async function GET(
   request: NextRequest,
@@ -15,8 +15,7 @@ export async function GET(
     const { id } = params;
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(
@@ -117,8 +116,7 @@ export async function PATCH(
     const { status, paymentStatus } = await request.json();
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import pool from './mongodb'
 
 // Generate a random token
 export const generateRandomToken = (length = 32): string => {
@@ -37,61 +38,7 @@ export const sanitizeInput = (input: string): string => {
     .trim();
 };
 
-// Advanced input sanitization for SQL injection prevention
-export const sanitizeForSQL = (input: string): string => {
-  if (typeof input !== 'string') return '';
-  return input
-    .replace(/'/g, "''") // Escape single quotes for SQL
-    .replace(/;/g, '') // Remove semicolons
-    .replace(/--/g, '') // Remove SQL comments
-    .trim();
-};
 
-// Account lockout mechanism
-const lockoutStore = new Map<string, { attempts: number; lockoutUntil: number }>();
-
-export const accountLockout = {
-  // Check if account is locked
-  isLocked: (identifier: string): boolean => {
-    const record = lockoutStore.get(identifier);
-    if (!record) return false;
-
-    const now = Date.now();
-    if (now > record.lockoutUntil) {
-      lockoutStore.delete(identifier); // Lockout expired
-      return false;
-    }
-
-    return true;
-  },
-
-  // Record failed attempt
-  recordFailedAttempt: (identifier: string, maxAttempts: number = 5, lockoutMinutes: number = 15): boolean => {
-    const record = lockoutStore.get(identifier) || { attempts: 0, lockoutUntil: 0 };
-    record.attempts++;
-
-    if (record.attempts >= maxAttempts) {
-      record.lockoutUntil = Date.now() + (lockoutMinutes * 60 * 1000);
-      lockoutStore.set(identifier, record);
-      return true; // Account is now locked
-    }
-
-    lockoutStore.set(identifier, record);
-    return false; // Account not locked yet
-  },
-
-  // Clear failed attempts on successful login
-  clearFailedAttempts: (identifier: string): void => {
-    lockoutStore.delete(identifier);
-  },
-
-  // Get remaining attempts
-  getRemainingAttempts: (identifier: string, maxAttempts: number = 5): number => {
-    const record = lockoutStore.get(identifier);
-    if (!record) return maxAttempts;
-    return Math.max(0, maxAttempts - record.attempts);
-  }
-};
 
 // Validate and sanitize an email
 export const validateEmail = (email: string): { isValid: boolean; sanitized?: string } => {
@@ -110,65 +57,162 @@ export const validateEmail = (email: string): { isValid: boolean; sanitized?: st
 
 // Rate limiting utility (in-memory implementation)
 // In production, you would use Redis or another distributed store
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+export const accountLockout = {
+  isLocked: async (identifier: string): Promise<boolean> => {
+    const { rows } = await pool.query(
+      'SELECT lockout_until FROM account_lockouts WHERE identifier = $1',
+      [identifier]
+    );
 
-export const rateLimit = {
-  // Check if a request should be rate limited
-  check: (identifier: string, limit: number, windowMs: number): boolean => {
-    const now = Date.now();
-    const record = rateLimitStore.get(identifier);
-    
-    if (!record) {
-      // First request from this identifier
-      rateLimitStore.set(identifier, {
-        count: 1,
-        resetTime: now + windowMs
-      });
+    if(rows.length === 0) {
       return false;
     }
     
     // Check if the window has reset
-    if (now > record.resetTime) {
-      rateLimitStore.set(identifier, {
-        count: 1,
-        resetTime: now + windowMs
-      });
+    const lockout_until = rows[0].lockout_until as Date | null;
+    
+    if(!lockout_until){
       return false;
     }
-    
-    // Increment the count
-    record.count++;
-    
-    // Check if the limit has been exceeded
-    if (record.count > limit) {
-      return true; // Rate limited
-    }
-    
+
+    await pool.query(
+      'UPDATE account_lockouts SET attempts = 0, lockout_until = NULL, updated_at = NOW() WHERE identifier = $1',
+      [identifier]
+    );
     return false;
   },
   
   // Get the remaining requests and reset time
-  getStatus: (identifier: string): { remaining: number; resetTime: number } | null => {
-    const record = rateLimitStore.get(identifier);
-    
-    if (!record) {
+  recordFailedAttempt: async (
+    identifier: string,
+    maxAttempts: number = 5,
+    lockoutMinutes: number = 15
+  ): Promise<boolean> => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        'SELECT attempts, lockout_until FROM account_lockouts WHERE identifier = $1 FOR UPDATE',
+        [identifier]
+      );
+
+      const now = new Date();
+      let attempts = rows[0]?.attempts ?? 0;
+      let lockoutUntil = rows[0]?.lockout_until ? new Date(rows[0].lockout_until) : null;
+
+      if (lockoutUntil && lockoutUntil > now) {
+        await client.query('COMMIT');
+        return true;
+      }
+
+      if (lockoutUntil && lockoutUntil <= now) {
+        attempts = 0;
+        lockoutUntil = null;
+      }
+
+      attempts += 1;
+
+      if (attempts >= maxAttempts) {
+        lockoutUntil = new Date(now.getTime() + lockoutMinutes * 60 * 1000);
+        attempts = 0;
+      }
+
+      if (rows.length > 0) {
+        await client.query(
+          'UPDATE account_lockouts SET attempts = $2, lockout_until = $3, updated_at = NOW() WHERE identifier = $1',
+          [identifier, attempts, lockoutUntil]
+        );
+      } else {
+        await client.query(
+          'INSERT INTO account_lockouts(identifier, attempts, lockout_until, updated_at) VALUES ($1, $2, $3, NOW())',
+          [identifier, attempts, lockoutUntil]
+        );
+      }
+
+      await client.query('COMMIT');
+      return lockoutUntil !== null;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  clearFailedAttempts: async (identifier: string): Promise<void> => {
+    await pool.query('DELETE FROM account_lockouts WHERE identifier = $1', [identifier]);
+  },
+
+  getRemainingAttempts: async (identifier: string, maxAttempts: number = 5): Promise<number> => {
+    const { rows } = await pool.query(
+      'SELECT attempts, lockout_until FROM account_lockouts WHERE identifier = $1',
+      [identifier]
+    );
+
+    if (rows.length === 0) {
+      return maxAttempts;
+    }
+
+    const lockoutUntil = rows[0].lockout_until ? new Date(rows[0].lockout_until) : null;
+    if (lockoutUntil && lockoutUntil > new Date()) {
+      return 0;
+    }
+
+    const attempts = rows[0].attempts ?? 0;
+    return Math.max(0, maxAttempts - attempts);
+  }
+};
+
+export const rateLimit = {
+  check: async (identifier: string, limit: number, windowMs: number): Promise<boolean> => {
+    const windowMsSafe = Math.max(windowMs, 1);
+    const { rows } = await pool.query(
+      `
+        INSERT INTO rate_limit_counters(identifier, count, reset_time)
+        VALUES ($1, 1, NOW() + ($2::bigint * INTERVAL '1 millisecond'))
+        ON CONFLICT (identifier)
+        DO UPDATE SET
+          count = CASE
+            WHEN NOW() > rate_limit_counters.reset_time THEN 1
+            ELSE rate_limit_counters.count + 1
+          END,
+          reset_time = CASE
+            WHEN NOW() > rate_limit_counters.reset_time THEN NOW() + ($2::bigint * INTERVAL '1 millisecond')
+            ELSE rate_limit_counters.reset_time
+          END,
+          updated_at = NOW()
+        RETURNING count;
+      `,
+      [identifier, windowMsSafe]
+    );
+
+    const count = rows[0]?.count ?? 0;
+    return count > limit;
+  },
+
+  getStatus: async (
+    identifier: string
+  ): Promise<{ count: number; resetTime: number } | null> => {
+    const { rows } = await pool.query(
+      'SELECT count, EXTRACT(EPOCH FROM reset_time) * 1000 AS reset_timestamp FROM rate_limit_counters WHERE identifier = $1',
+      [identifier]
+    );
+
+    if (rows.length === 0) {
+      
       return null;
     }
     
     return {
-      remaining: Math.max(0, record.count),
-      resetTime: record.resetTime
+      count: rows[0].count,
+      resetTime: Number(rows[0].reset_timestamp)
     };
   },
   
   // Clean up expired records (call this periodically)
-  cleanup: (): void => {
-    const now = Date.now();
-    rateLimitStore.forEach((record, key) => {
-      if (now > record.resetTime) {
-        rateLimitStore.delete(key);
-      }
-    });
+  cleanup: async (): Promise<void> => {
+    await pool.query('DELETE FROM rate_limit_counters WHERE reset_time < NOW()');
   }
 };
 

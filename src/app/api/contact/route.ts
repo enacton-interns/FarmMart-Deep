@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 contact requests per minute
+    if (await rateLimit.check(clientIP, 5, 60 * 1000)) { // 5 contact requests per minute
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -57,8 +57,6 @@ export async function POST(request: NextRequest) {
     // 3. Send confirmation email to user
 
     // For now, just log and return success
-    console.log('Contact form submission:', { name, email, message });
-
     return NextResponse.json(
       {
         message: 'Thank you for your message. We will get back to you soon!',

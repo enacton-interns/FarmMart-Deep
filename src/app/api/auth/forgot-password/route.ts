@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 3, 60 * 60 * 1000)) { // 3 requests per hour
+    if (await rateLimit.check(clientIP, 3, 60 * 60 * 1000)) { // 3 requests per hour
       return NextResponse.json(
         { error: 'Too many password reset requests. Please try again later.' },
         { status: 429 }
@@ -62,11 +62,6 @@ export async function POST(request: NextRequest) {
       // 1. Store the reset token in the database with expiry
       // 2. Send an email with the reset link
 
-      // For now, we'll just log the reset token (in production, send email)
-      console.log(`Password reset requested for: ${email}`);
-      console.log(`Reset token: ${resetToken}`);
-      console.log(`Token expires: ${resetTokenExpiry.toISOString()}`);
-      console.log(`Reset link: http://localhost:3000/auth/reset-password?token=${resetToken}`);
 
       // TODO: In production, implement:
       // - Store reset token in database with expiry

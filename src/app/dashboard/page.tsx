@@ -151,14 +151,11 @@ export default function DashboardPage() {
     if (!showDeleteConfirm) return;
 
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
       const response = await fetch(`${baseUrl}/api/products/${showDeleteConfirm}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -189,15 +186,11 @@ export default function DashboardPage() {
 
   const handleStatusChange = async (orderId: string, newStatus: string) => {
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
       const response = await fetch(`${baseUrl}/api/orders/${orderId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
         body: JSON.stringify({ status: newStatus }),
       });
 

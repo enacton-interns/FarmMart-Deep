@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pool from '@/lib/mongodb';
-import { verifyToken } from '@/lib/jwt';
+
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import stripe from '@/lib/stripe';
-import { log } from 'console';
+
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Payment Intent API: Request received');
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       console.log('Payment Intent API: No token provided');
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Payment Intent API: Token verified for user:', decoded.id);
+    console.log('Payment Intent API: Token verified');
 
     // Get payment data from request body
     const { amount, items } = await request.json();

@@ -111,6 +111,26 @@ const initDB = async () => {
     `);
     console.log('Notifications table created or already exists');
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rate_limit_counters (
+        identifier TEXT PRIMARY KEY,
+        count INTEGER NOT NULL DEFAULT 0,
+        reset_time TIMESTAMPTZ NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log('Rate limit counters table created or already exists');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS account_lockouts (
+        identifier TEXT PRIMARY KEY,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        lockout_until TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log('Account lockouts table created or already exists');
+
     // Update existing notifications table if needed
     try {
       // Check if the table has the old constraint

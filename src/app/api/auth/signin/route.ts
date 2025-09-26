@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { UserModel } from '@/lib/models';
-import jwt from 'jsonwebtoken';
 import { validateLogin } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
-import { getRequiredEnvVar } from '../../../../lib/env';
-
-const JWT_SECRET = getRequiredEnvVar('JWT_SECRET');
+import { signToken } from '@/lib/jwt';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,28 +19,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Sanitize input
-    const sanitizedEmail = sanitizeInput(email);
-
     // Initialize user model
     const userModel = new UserModel(pool);
 
     // Find user by email
-    const user = await userModel.findByEmail(sanitizedEmail);
+    const normalizedEmail = typeof email === 'string' ? email.toLowerCase().trim() : '';
+    const user = await userModel.findByEmail(normalizedEmail);
+
     if (!user) {
-      console.log(`User not found for email: ${sanitizedEmail}`);
       return NextResponse.json(
         { error: 'Invalid email or password' },
         { status: 401 }
       );
     }
 
-    // Check password using the User model's comparePassword method
-    console.log(`Comparing passwords for user: ${sanitizedEmail}`);
-    
     // Use the UserModel's comparePassword method
     const isPasswordValid = await userModel.comparePassword(password, user.password);
-    console.log(`Password validation result: ${isPasswordValid}`);
     if (!isPasswordValid) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -53,22 +43,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = signToken(user);
 
     // Return success response with token and basic user data
-    return NextResponse.json({
+    const response =  NextResponse.json({
       message: 'Login successful',
-      token,
       user: {
         id: user.id,
         email: user.email,
         role: user.role,
       },
     });
+
+    response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    return response;
+
   } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json(

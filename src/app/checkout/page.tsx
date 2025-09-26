@@ -55,15 +55,14 @@ function PaymentForm({
       console.log('PaymentForm: Creating payment intent...');
 
       // Create payment intent
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-      const token = localStorage.getItem('token');
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL;
 
       const response = await fetch(`${baseUrl}/api/checkout/payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           amount: Math.round(getTotal() * 100), // Convert to cents
           items: cartItems,
@@ -133,10 +132,8 @@ function PaymentForm({
     console.log('PaymentForm: Starting order creation after payment');
 
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-      console.log('PaymentForm: Token present:', !!token);
       console.log('PaymentForm: Cart items count:', cartItems.length);
 
       // First, decrease product quantities
@@ -146,8 +143,8 @@ function PaymentForm({
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
+          credentials: 'include',
           body: JSON.stringify({ quantity: item.quantity }),
         })
       );
@@ -190,8 +187,8 @@ function PaymentForm({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify(orderData),
       });
 
@@ -443,7 +440,6 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      const token = localStorage.getItem('token');
 
       // Create order data
       const orderData = {
@@ -470,8 +466,8 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify(orderData),
       });
 

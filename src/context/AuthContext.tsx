@@ -26,23 +26,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in on page load
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Verify token and get user data
-      fetchUserData(token);
-    } else {
-      setLoading(false);
-    }
+    fetchUserData();
   }, []);
 
-  const fetchUserData = async (token: string) => {
+  const fetchUserData = async () => {
     try {
+      setLoading(true);
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const response = await fetch(`${baseUrl}/api/auth/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -55,13 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         setUser(user);
       } else {
-        // Token is invalid, remove it
-        localStorage.removeItem('token');
         setUser(null);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
-      localStorage.removeItem('token');
       setUser(null);
     } finally {
       setLoading(false);
@@ -76,6 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       });
 
@@ -86,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Store basic user data initially
         setUser(data.user);
         // Fetch complete user data from database
-        await fetchUserData(data.token);
+        await fetchUserData();
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -112,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify(userData),
       });
 
@@ -122,7 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Store basic user data initially
         setUser(data.user);
         // Fetch complete user data from database
-        await fetchUserData(data.token);
+        await fetchUserData();
         return { success: true };
       } else {
         return { success: false, error: data.error };
@@ -134,15 +125,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshUser = async () => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      await fetchUserData(token);
-    }
+    fetchUserData();
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch((error) => {
+      console.error('Logout error:', error);
+    }).finally(() => {
+      setUser(null);
+    });
   };
 
   return (

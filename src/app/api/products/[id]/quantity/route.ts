@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { ProductModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import {getTokenFromRequest, verifyToken } from '@/lib/jwt';
 
 export async function PATCH(
   request: NextRequest,
@@ -9,8 +9,7 @@ export async function PATCH(
 ) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(

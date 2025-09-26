@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 3, 60 * 1000)) { // 3 newsletter subscriptions per minute
+    if (await rateLimit.check(clientIP, 3, 60 * 1000)) { // 3 newsletter subscriptions per minute
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
         { status: 429 }
@@ -58,8 +58,6 @@ export async function POST(request: NextRequest) {
     // 4. Integrate with email marketing service
 
     // For now, just log and return success
-    console.log('Newsletter subscription:', { email });
-
     return NextResponse.json(
       {
         message: 'Successfully subscribed to newsletter!',

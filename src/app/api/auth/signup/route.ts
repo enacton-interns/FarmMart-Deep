@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { UserModel } from '@/lib/models';
 import { FarmerModel } from '@/lib/models';
-import jwt from 'jsonwebtoken';
-import { validateRegister } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
-import { getRequiredEnvVar } from '../../../../lib/env';
 
-const JWT_SECRET = getRequiredEnvVar('JWT_SECRET');
+import { validateRegister } from '@/lib/validation';
+import { signToken } from '@/lib/jwt';
+import { sign } from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,10 +31,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Sanitize input
-    const sanitizedName = sanitizeInput(name);
-    const sanitizedEmail = sanitizeInput(email);
-    const sanitizedAddress = address ? sanitizeInput(address) : '';
-    const sanitizedPhone = phone ? sanitizeInput(phone) : '';
+    const sanitizedName = typeof name === 'string' ? name.trim() : '';
+    const sanitizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const sanitizedAddress = address ? address.trim() : '';
+    const sanitizedPhone = phone ? phone.trim() : '';
 
     // Initialize models
     const userModel = new UserModel(pool);
@@ -62,11 +60,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Generate JWT token
-    const token = jwt.sign(
-      { id: newUser.id, email: newUser.email, role: newUser.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = signToken(newUser);
 
     // If user is a farmer, create a farmer profile
     if (role === 'farmer') {
@@ -86,14 +80,8 @@ export async function POST(request: NextRequest) {
         verified: false,
       };
 
-      console.log('Creating farmer with data:', farmerData);
-      console.log('Farm name length:', farmerData.farmName.length);
-      console.log('Farm description length:', farmerData.farmDescription.length);
-      console.log('Address length:', farmerData.farmLocation.address.length);
-
       try {
         await farmerModel.create(farmerData);
-        console.log('Farmer profile created successfully');
       } catch (farmerError) {
         console.error('Error creating farmer profile:', farmerError);
         // Don't fail the entire signup if farmer creation fails
@@ -101,7 +89,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: 'Registration successful',
       token,
       user: {
@@ -110,6 +98,16 @@ export async function POST(request: NextRequest) {
         role: newUser.role,
       },
     });
+
+     response.cookies.set('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60,
+    });
+
+    return response;
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json(

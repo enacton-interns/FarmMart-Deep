@@ -18,14 +18,13 @@ export const swrConfig: SWRConfiguration = {
   errorRetryCount: 3,
   errorRetryInterval: 5000,
 
-  // Custom fetcher with auth headers
+  // Custom fetcher with cookies
   fetcher: async (url: string) => {
-    const token = localStorage.getItem('token');
     const response = await fetch(url, {
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
       },
+      credentials: 'include', // Include cookies in requests
     });
 
     if (!response.ok) {

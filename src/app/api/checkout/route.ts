@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { UserModel, ProductModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import stripe from '@/lib/stripe';
 import { rateLimit, securityHeaders, validators } from '@/lib/security';
 
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     const clientIP = request.headers.get('x-forwarded-for') ||
                      request.headers.get('x-real-ip') ||
                      'unknown';
-    if (rateLimit.check(clientIP, 10, 60 * 1000)) { // 10 requests per minute for checkout
+    if (await rateLimit.check(clientIP, 10, 60 * 1000)) { // 10 requests per minute for checkout
       return NextResponse.json(
         { error: 'Too many checkout attempts. Please try again later.' },
         { status: 429 }
@@ -19,8 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(

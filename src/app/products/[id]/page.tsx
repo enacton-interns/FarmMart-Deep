@@ -44,12 +44,9 @@ export default function ProductDetailPage() {
 
   const fetchProduct = async () => {
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const res = await fetch(`${baseUrl}/api/products/${productId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
         cache: 'no-store',
       });
 
@@ -90,15 +87,11 @@ export default function ProductDetailPage() {
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
       const response = await fetch(`${baseUrl}/api/products/${productId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
         body: JSON.stringify({
           name: editForm.name,
           description: editForm.description,
@@ -135,13 +128,10 @@ export default function ProductDetailPage() {
   const confirmDelete = async () => {
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
       const response = await fetch(`${baseUrl}/api/products/${productId}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (response.ok) {

@@ -1,3 +1,4 @@
+import { NextRequest } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { IUser } from './models/User';
 
@@ -8,7 +9,7 @@ if (!JWT_SECRET) {
   throw new Error('Please define the JWT_SECRET environment variable inside .env.local');
 }
 
-export const signToken = (user: IUser): string => {
+export const signToken = (user: Pick<IUser, 'id' | 'email' | 'name' | 'role'>): string => {
   return jwt.sign(
     {
       id: user.id,
@@ -60,4 +61,19 @@ export const verifyToken = (token: string): any => {
     }
     return null;
   }
+};
+
+export const getTokenFromRequest = (request: NextRequest): string | null => {
+  const cookieToken = request.cookies.get('token');
+  if (cookieToken?.value) {
+    return cookieToken.value;
+  }
+
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    return token.length > 0 ? token : null;
+  }
+
+  return null;
 };

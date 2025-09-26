@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
 import { ProductModel } from '@/lib/models';
 import { FarmerModel } from '@/lib/models';
-import { verifyToken } from '@/lib/jwt';
+import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 
 export async function GET(
   request: NextRequest,
@@ -39,8 +39,7 @@ export async function GET(
     }
 
     // Check if current user is the farmer who owns this product
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1];
+    const token = getTokenFromRequest(request);
     let isOwnProduct = false;
 
     if (token) {
@@ -94,8 +93,7 @@ export async function PUT(
 ) {
   try {
     // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(
@@ -171,14 +169,7 @@ export async function PUT(
       );
     }
 
-    // Debug logging
-    console.log('Product farmerId:', existingProduct.farmerId, typeof existingProduct.farmerId);
-    console.log('Farmer id:', farmer.id, typeof farmer.id);
-    console.log('User ID from token:', decoded.id, typeof decoded.id);
-    console.log('Farmer userId:', farmer.userId, typeof farmer.userId);
-
     if (existingProduct.farmerId !== Number(farmer.id)) {
-      console.log('Authorization failed: Product does not belong to farmer');
       return NextResponse.json(
         { error: 'You can only update your own products' },
         { status: 403 }
@@ -240,9 +231,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Get token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    // Get token from Authorization header.
+    const token = getTokenFromRequest(request);
 
     if (!token) {
       return NextResponse.json(

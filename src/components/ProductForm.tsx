@@ -114,7 +114,6 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
       // Combine uploaded images (convert to base64) and URL images
@@ -134,8 +133,8 @@ export default function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
@@ -610,7 +609,6 @@ export function EditProductForm({ product, onSuccess, onCancel }: EditProductFor
     setIsSubmitting(true);
 
     try {
-      const token = localStorage.getItem('token');
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
       // Combine uploaded images (convert to base64) and URL images
@@ -630,8 +628,8 @@ export function EditProductForm({ product, onSuccess, onCancel }: EditProductFor
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
+        credentials: 'include',
         body: JSON.stringify({
           name: formData.name,
           description: formData.description,
