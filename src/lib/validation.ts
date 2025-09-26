@@ -340,12 +340,22 @@ export const validateCreateNotification = (data: any) => {
 export const sanitizeInput = (input: any): any => {
   if (typeof input !== 'string') return input;
   
-  return input
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/'/g, '&#039;');
+  return input.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return char;
+    }
+  });
 };
 
 // Email validation

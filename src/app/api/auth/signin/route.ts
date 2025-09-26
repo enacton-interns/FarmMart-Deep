@@ -4,8 +4,9 @@ import { UserModel } from '@/lib/models';
 import jwt from 'jsonwebtoken';
 import { validateLogin } from '@/lib/validation';
 import { sanitizeInput } from '@/lib/security';
+import { getRequiredEnvVar } from '../../../../lib/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_SECRET = getRequiredEnvVar('JWT_SECRET');
 
 export async function POST(request: NextRequest) {
   try {

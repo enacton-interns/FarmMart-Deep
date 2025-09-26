@@ -10,24 +10,28 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - MONGODB_URI=mongodb://mongo:27017/farmmarket
-      - JWT_SECRET=your_jwt_secret_here
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/farmmart
+      - JWT_SECRET=change-me
       - STRIPE_SECRET_KEY=your_stripe_secret_key_here
       - STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret_here
       - NEXT_PUBLIC_API_URL=https://yourdomain.com
     depends_on:
-      - mongo
+      - postgres
     restart: unless-stopped
     networks:
       - farmmarket-network
 
-  mongo:
-    image: mongo:6.0
-    container_name: farmmarket-mongo
+  postgres:
+    image: postgres:15-alpine
+    container_name: farmmarket-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: farmmart
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - farmmarket-network
@@ -48,7 +52,7 @@ services:
       - farmmarket-network
 
 volumes:
-  mongo-data:
+  postgres-data:
 
 networks:
   farmmarket-network:

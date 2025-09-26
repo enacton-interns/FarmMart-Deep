@@ -23,14 +23,17 @@ export const comparePassword = async (password: string, hash: string): Promise<b
 };
 
 // Sanitize user input to prevent XSS
+const HTML_ESCAPE_LOOKUP: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
 export const sanitizeInput = (input: string): string => {
   if (typeof input !== 'string') return '';
   return input
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
-    .replace(/'/g, '&#039;')
+    .replace(/[&<>"']/g, (char) => HTML_ESCAPE_LOOKUP[char])
     .trim();
 };
 

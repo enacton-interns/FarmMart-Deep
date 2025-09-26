@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/mongodb';
+import { getOptionalEnvVar } from '../../../lib/env';
 
 export async function POST(request: NextRequest) {
+  const internalSecret = getOptionalEnvVar('INTERNAL_API_SECRET');
+
+    if (!internalSecret) {
+      return NextResponse.json(
+        { error: 'Migration endpoint is disabled' },
+        { status: 503 }
+      );
+    }
+
+    const requestSecret = request.headers.get('x-internal-secret');
+
+    if (requestSecret !== internalSecret) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
   try {
     console.log('Running database migration...');
 

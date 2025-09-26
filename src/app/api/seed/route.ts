@@ -5,8 +5,24 @@ import { FarmerModel } from '@/lib/models';
 import { ProductModel } from '@/lib/models';
 import { OrderModel } from '@/lib/models';
 import bcrypt from 'bcryptjs';
+import { getOptionalEnvVar } from '../../../lib/env';
 
 export async function POST(request: NextRequest) {
+  const internalSecret = getOptionalEnvVar('INTERNAL_API_SECRET');
+
+  if (!internalSecret) {
+    return NextResponse.json(
+      { error: 'Seed endpoint is disabled' },
+      { status: 503 }
+    );
+  }
+
+  const requestSecret = request.headers.get('x-internal-secret');
+
+  if (requestSecret !== internalSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     console.log('Connected to PostgreSQL');
 
@@ -18,11 +34,6 @@ export async function POST(request: NextRequest) {
     const customerPassword = await bcrypt.hash('password123', 10);
     const farmerPassword = await bcrypt.hash('farmer123', 10);
     const adminPassword = await bcrypt.hash('admin123', 10);
-    
-    console.log('Hashed passwords:');
-    console.log('customerPassword:', customerPassword);
-    console.log('farmerPassword:', farmerPassword);
-    console.log('adminPassword:', adminPassword);
 
     // Initialize models
     const userModel = new UserModel(pool);
