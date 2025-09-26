@@ -72,7 +72,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('token', data.token);
         // Store basic user data initially
         setUser(data.user);
         // Fetch complete user data from database
@@ -109,7 +108,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('token', data.token);
         // Store basic user data initially
         setUser(data.user);
         // Fetch complete user data from database

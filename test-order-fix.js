@@ -13,7 +13,21 @@ const testOrderCreation = async () => {
       }),
     });
 
-    if (!loginResponse.ok) {
+    const extractCookie = (header, name) => {
+      if (!header) return null;
+      const cookies = header.split(/,(?=[^;]+=[^;]+)/g);
+      for (const raw of cookies) {
+        const [cookieName, rest] = raw.trim().split('=');
+        if (cookieName === name && rest) {
+          return `${cookieName}=${rest.split(';')[0]}`;
+        }
+      }
+      return null;
+    };
+
+    let authCookie = extractCookie(loginResponse.headers.get('set-cookie'), 'token');
+
+    if (!loginResponse.ok || !authCookie) {
       console.log('Login failed, trying signup first...');
 
       // Try to signup first
@@ -54,11 +68,20 @@ const testOrderCreation = async () => {
         return;
       }
 
-      const loginData = await loginResponse2.json();
-      console.log('Login successful, token:', loginData.token.substring(0, 20) + '...');
+      authCookie = extractCookie(loginResponse2.headers.get('set-cookie'), 'token');
+      if (!authCookie) {
+        console.error('Login succeeded but no auth cookie was returned');
+        return;
+      }
     } else {
-      const loginData = await loginResponse.json();
-      console.log('Login successful, token:', loginData.token.substring(0, 20) + '...');
+      if (!authCookie) {
+        authCookie = extractCookie(loginResponse.headers.get('set-cookie'), 'token');
+        if (!authCookie) {
+          console.error('Login succeeded but no auth cookie was returned');
+          return;
+        }
+      }
+      console.log('Login successful using secure cookie authentication');
     }
 
     // Get products to find a valid product ID
@@ -104,7 +127,7 @@ const testOrderCreation = async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${loginData ? loginData.token : 'token-placeholder'}`
+        'Cookie': authCookie,
       },
       body: JSON.stringify(orderData),
     });

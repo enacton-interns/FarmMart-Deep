@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { isStrongPassword } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
+import { sanitizeInput } from '@/lib/security-client';
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('');

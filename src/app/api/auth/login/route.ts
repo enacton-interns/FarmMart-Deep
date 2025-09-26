@@ -4,6 +4,7 @@ import { UserModel } from '@/lib/models';
 import { signToken } from '@/lib/jwt';
 import { rateLimit, validators, accountLockout } from '@/lib/security';
 import { isValidEmail } from '@/lib/validation';
+import {logger} from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -132,10 +133,8 @@ export async function POST(request: NextRequest) {
       {
         message: 'Login successful',
         user: userResponse,
-        token,
       },
       { status: 200 }
-      
     );
     response.cookies.set('token', token, {
       httpOnly: true,
@@ -147,7 +146,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', { error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

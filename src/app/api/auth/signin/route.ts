@@ -3,6 +3,7 @@ import pool from '@/lib/mongodb';
 import { UserModel } from '@/lib/models';
 import { validateLogin } from '@/lib/validation';
 import { signToken } from '@/lib/jwt';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     return response;
 
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error:', {error});
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

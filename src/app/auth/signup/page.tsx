@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { validateRegister } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
+import { sanitizeInput } from '@/lib/security-client';
 
 export default function SignUpPage() {
   const [formData, setFormData] = useState({

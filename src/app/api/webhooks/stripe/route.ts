@@ -3,6 +3,7 @@ import stripe from '@/lib/stripe';
 import crypto from 'crypto';
 import pool from '@/lib/mongodb';
 import { OrderModel, UserModel, FarmerModel, ProductModel, NotificationModel } from '@/lib/models';
+import { logger } from '@/lib/logger';
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -36,7 +37,7 @@ function verifyStripeSignature(body: string, signature: string, secret: string):
       Buffer.from(expectedSignature)
     );
   } catch (error) {
-    console.error('Signature verification error:', error);
+    logger.error('Stripe signature verification error', { error });
     return false;
   }
 }
@@ -44,7 +45,7 @@ function verifyStripeSignature(body: string, signature: string, secret: string):
 export async function POST(request: NextRequest) {
   try {
     if (!webhookSecret) {
-      console.error('Stripe webhook secret not configured');
+      logger.error('Stripe webhook secret not configured');
       return NextResponse.json(
         { error: 'Webhook configuration error' },
         { status: 500 }
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('stripe-signature');
 
     if (!signature) {
-      console.error('Missing Stripe signature');
+      logger.warn('Missing Stripe signature header');
       return NextResponse.json(
         { error: 'Missing signature' },
         { status: 400 }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     // Verify webhook signature
     if (!verifyStripeSignature(body, signature, webhookSecret)) {
-      console.error('Invalid webhook signature');
+      logger.warn('Invalid Stripe webhook signature detected');
       return NextResponse.json(
         { error: 'Invalid signature' },
         { status: 400 }
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     try {
       event = JSON.parse(body);
     } catch (err) {
-      console.error('Invalid JSON in webhook body:', err);
+      logger.warn('Invalid JSON in Stripe webhook body', { error: err });
       return NextResponse.json(
         { error: 'Invalid JSON' },
         { status: 400 }
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Validate event structure
     if (!event.type || !event.data || !event.data.object) {
-      console.error('Invalid event structure');
+      logger.warn('Invalid Stripe event structure received');
       return NextResponse.json(
         { error: 'Invalid event structure' },
         { status: 400 }
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed':
         const session = event.data.object;
-        console.log('Checkout session completed:', session.id);
+        logger.info('Stripe checkout session completed', { sessionId: session.id });
 
         // Validate session data
         if (!session.id || !session.metadata || !session.metadata.userId || !session.metadata.cartItems) {
@@ -122,7 +123,7 @@ export async function POST(request: NextRequest) {
           // Get user
           const user = await userModel.findById(userId);
           if (!user) {
-            console.error('User not found for checkout session:', userId);
+            logger.error('User not found for checkout session', { sessionId: session.id, userId });
             return NextResponse.json(
               { error: 'User not found' },
               { status: 400 }
@@ -137,18 +138,23 @@ export async function POST(request: NextRequest) {
             // Fetch product
             const product = await productModel.findById(item.productId);
             if (!product) {
-              console.error(`Product ${item.productId} not found during webhook processing`);
+              logger.error('Product missing during webhook processing', { productId: item.productId, sessionId: session.id });
               continue; // Skip invalid products
             }
 
             if (!product.available) {
-              console.error(`Product ${product.name} is not available`);
+              logger.warn('Product unavailable during webhook processing', { productId: product.id, sessionId: session.id });
               continue; // Skip unavailable products
             }
 
             // Check inventory
             if (product.quantity < item.quantity) {
-              console.error(`Insufficient inventory for ${product.name}. Available: ${product.quantity}, Requested: ${item.quantity}`);
+              logger.warn('Insufficient inventory during webhook processing', {
+                productId: product.id,
+                available: product.quantity,
+                requested: item.quantity,
+                sessionId: session.id,
+              });
               continue; // Skip items with insufficient inventory
             }
 
@@ -238,13 +244,13 @@ export async function POST(request: NextRequest) {
                       });
                     }
                   } catch (notificationError) {
-                    console.error('Error creating notifications:', notificationError);
+                    logger.error('Error creating notifications during webhook', { error: notificationError });
                   }
                 })()
               );
 
             } catch (orderError) {
-              console.error('Order creation failed:', orderError);
+              logger.error('Order creation failed:', {error: orderError});
               // Continue with other orders - don't fail the whole webhook
             }
           }
@@ -252,7 +258,7 @@ export async function POST(request: NextRequest) {
           // Wait for all notifications to be sent
           await Promise.all(notificationPromises);
 
-          console.log(`Created ${createdOrders.length} orders from checkout session ${session.id}`);
+          logger.info(`Created ${createdOrders.length} orders from checkout session ${session.id}`);
 
         } catch (webhookProcessingError) {
           console.error('Error processing checkout session:', webhookProcessingError);
@@ -265,12 +271,12 @@ export async function POST(request: NextRequest) {
 
       case 'payment_intent.payment_failed':
         const paymentIntent = event.data.object;
-        console.log('Payment failed:', paymentIntent.id);
+        logger.info('Payment failed:', paymentIntent.id);
         // TODO: Handle failed payments
         break;
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        logger.info(`Unhandled event type: ${event.type}`);
     }
 
     return NextResponse.json(
@@ -278,7 +284,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Webhook error:', error);
+    logger.error('Webhook error:', {error: error});
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

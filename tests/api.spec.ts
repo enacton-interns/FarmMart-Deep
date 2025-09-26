@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { apiRequest, getAuthToken, testUser } from './test-utils';
+import { apiRequest, testUser } from './test-utils';
 
 test.describe('API Tests', () => {
   let authToken: string | null = null;

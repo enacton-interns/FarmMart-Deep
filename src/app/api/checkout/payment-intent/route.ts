@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import stripe from '@/lib/stripe';
-
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Payment Intent API: Request received');
+    logger.debug('Payment intent request received', {
+      path: request.nextUrl?.pathname,
+    });
 
     // Get token from Authorization header
     const token = getTokenFromRequest(request);
 
     if (!token) {
-      console.log('Payment Intent API: No token provided');
+      logger.warn('Payment intent denied due to missing authentication');
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
     // Verify token
     const decoded = verifyToken(token);
     if (!decoded) {
-      console.log('Payment Intent API: Invalid token');
+      logger.warn('Payment intent denied due to missing authentication');
       return NextResponse.json(
         { error: 'Invalid or expired token' },
         { status: 401 }
@@ -33,17 +35,18 @@ export async function POST(request: NextRequest) {
 
     // Get payment data from request body
     const { amount, items } = await request.json();
-    console.log('Payment Intent API: Received amount:', amount, 'items count:', items?.length);
+    logger.debug('Payment intent payload received', {
+      amount,
+      itemCount: Array.isArray(items) ? items.length : undefined,
+    });
 
     if (!amount || amount <= 0) {
-      console.log('Payment Intent API: Invalid amount');
       return NextResponse.json(
         { error: 'Valid amount is required' },
         { status: 400 }
       );
     }
 
-    console.log('Payment Intent API: Creating payment intent...');
 
     // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create({
@@ -58,7 +61,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('Payment Intent API: Payment intent created successfully:', paymentIntent.id);
+    logger.info('Payment intent created', {
+      paymentIntentId: paymentIntent.id,
+      userId: decoded.id,
+    });
 
     return NextResponse.json(
       {
@@ -67,7 +73,7 @@ export async function POST(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Payment Intent API: Error creating payment intent:', error);
+    logger.error('Payment intent creation failed', { error });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

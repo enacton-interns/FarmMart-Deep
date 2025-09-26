@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import pool from './mongodb'
+import redisClient from './redis';
 
 // Generate a random token
 export const generateRandomToken = (length = 32): string => {
@@ -55,31 +56,27 @@ export const validateEmail = (email: string): { isValid: boolean; sanitized?: st
   return { isValid: true, sanitized };
 };
 
-// Rate limiting utility (in-memory implementation)
-// In production, you would use Redis or another distributed store
+const ACCOUNT_LOCKOUT_ATTEMPTS_PREFIX = 'account:lockout:attempts:';
+const ACCOUNT_LOCKOUT_UNTIL_PREFIX = 'account:lockout:until:';
+const RATE_LIMIT_PREFIX = 'ratelimit:';
 export const accountLockout = {
   isLocked: async (identifier: string): Promise<boolean> => {
-    const { rows } = await pool.query(
-      'SELECT lockout_until FROM account_lockouts WHERE identifier = $1',
-      [identifier]
-    );
-
-    if(rows.length === 0) {
+    const lockoutUntilRaw = await redisClient.get(`${ACCOUNT_LOCKOUT_UNTIL_PREFIX}${identifier}`);
+    if (!lockoutUntilRaw) {
       return false;
     }
     
     // Check if the window has reset
-    const lockout_until = rows[0].lockout_until as Date | null;
-    
-    if(!lockout_until){
+    const lockoutUntil = parseInt(lockoutUntilRaw, 10);
+    if (Number.isNaN(lockoutUntil) || lockoutUntil <= Date.now()) {
+      await redisClient.del(
+        `${ACCOUNT_LOCKOUT_UNTIL_PREFIX}${identifier}`,
+        `${ACCOUNT_LOCKOUT_ATTEMPTS_PREFIX}${identifier}`
+      );
       return false;
     }
 
-    await pool.query(
-      'UPDATE account_lockouts SET attempts = 0, lockout_until = NULL, updated_at = NOW() WHERE identifier = $1',
-      [identifier]
-    );
-    return false;
+    return true;
   },
   
   // Get the remaining requests and reset time
@@ -88,78 +85,58 @@ export const accountLockout = {
     maxAttempts: number = 5,
     lockoutMinutes: number = 15
   ): Promise<boolean> => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+    const lockoutKey = `${ACCOUNT_LOCKOUT_UNTIL_PREFIX}${identifier}`;
+    const attemptsKey = `${ACCOUNT_LOCKOUT_ATTEMPTS_PREFIX}${identifier}`;
+    const existingLockout = await redisClient.get(lockoutKey);
+    const windowMs = Math.max(lockoutMinutes, 1) * 60 * 1000;
 
-      const { rows } = await client.query(
-        'SELECT attempts, lockout_until FROM account_lockouts WHERE identifier = $1 FOR UPDATE',
-        [identifier]
-      );
-
-      const now = new Date();
-      let attempts = rows[0]?.attempts ?? 0;
-      let lockoutUntil = rows[0]?.lockout_until ? new Date(rows[0].lockout_until) : null;
-
-      if (lockoutUntil && lockoutUntil > now) {
-        await client.query('COMMIT');
+    if (existingLockout) {
+      const lockoutUntil = parseInt(existingLockout, 10);
+      if (!Number.isNaN(lockoutUntil) && lockoutUntil > Date.now()) {
         return true;
       }
-
-      if (lockoutUntil && lockoutUntil <= now) {
-        attempts = 0;
-        lockoutUntil = null;
-      }
-
-      attempts += 1;
-
-      if (attempts >= maxAttempts) {
-        lockoutUntil = new Date(now.getTime() + lockoutMinutes * 60 * 1000);
-        attempts = 0;
-      }
-
-      if (rows.length > 0) {
-        await client.query(
-          'UPDATE account_lockouts SET attempts = $2, lockout_until = $3, updated_at = NOW() WHERE identifier = $1',
-          [identifier, attempts, lockoutUntil]
-        );
-      } else {
-        await client.query(
-          'INSERT INTO account_lockouts(identifier, attempts, lockout_until, updated_at) VALUES ($1, $2, $3, NOW())',
-          [identifier, attempts, lockoutUntil]
-        );
-      }
-
-      await client.query('COMMIT');
-      return lockoutUntil !== null;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      await redisClient.del(lockoutKey);
     }
+
+    const attempts = await redisClient.incr(attemptsKey);
+    if (attempts === 1) {
+      await redisClient.pexpire(attemptsKey, windowMs);
+    }
+
+    if (attempts >= maxAttempts) {
+      const lockoutUntil = Date.now() + windowMs;
+      await redisClient.set(lockoutKey, lockoutUntil.toString(), 'PX', windowMs);
+      await redisClient.del(attemptsKey);
+      return true;
+    }
+
+    return false;
   },
 
   clearFailedAttempts: async (identifier: string): Promise<void> => {
-    await pool.query('DELETE FROM account_lockouts WHERE identifier = $1', [identifier]);
+    await redisClient.del(
+      `${ACCOUNT_LOCKOUT_ATTEMPTS_PREFIX}${identifier}`,
+      `${ACCOUNT_LOCKOUT_UNTIL_PREFIX}${identifier}`
+    );
   },
 
   getRemainingAttempts: async (identifier: string, maxAttempts: number = 5): Promise<number> => {
-    const { rows } = await pool.query(
-      'SELECT attempts, lockout_until FROM account_lockouts WHERE identifier = $1',
-      [identifier]
-    );
+    const lockoutKey = `${ACCOUNT_LOCKOUT_UNTIL_PREFIX}${identifier}`;
+    const attemptsKey = `${ACCOUNT_LOCKOUT_ATTEMPTS_PREFIX}${identifier}`;
+    const lockoutUntilRaw = await redisClient.get(lockoutKey);
+    if (lockoutUntilRaw) {
+      const lockoutUntil = parseInt(lockoutUntilRaw, 10);
+      if (!Number.isNaN(lockoutUntil) && lockoutUntil > Date.now()) {
+        return 0;
+      }
+    }
 
-    if (rows.length === 0) {
+    const attemptsRaw = await redisClient.get(attemptsKey);
+    const attempts = attemptsRaw ? parseInt(attemptsRaw, 10) : 0;
+    if (Number.isNaN(attempts)) {
       return maxAttempts;
     }
 
-    const lockoutUntil = rows[0].lockout_until ? new Date(rows[0].lockout_until) : null;
-    if (lockoutUntil && lockoutUntil > new Date()) {
-      return 0;
-    }
-
-    const attempts = rows[0].attempts ?? 0;
     return Math.max(0, maxAttempts - attempts);
   }
 };
@@ -167,52 +144,42 @@ export const accountLockout = {
 export const rateLimit = {
   check: async (identifier: string, limit: number, windowMs: number): Promise<boolean> => {
     const windowMsSafe = Math.max(windowMs, 1);
-    const { rows } = await pool.query(
-      `
-        INSERT INTO rate_limit_counters(identifier, count, reset_time)
-        VALUES ($1, 1, NOW() + ($2::bigint * INTERVAL '1 millisecond'))
-        ON CONFLICT (identifier)
-        DO UPDATE SET
-          count = CASE
-            WHEN NOW() > rate_limit_counters.reset_time THEN 1
-            ELSE rate_limit_counters.count + 1
-          END,
-          reset_time = CASE
-            WHEN NOW() > rate_limit_counters.reset_time THEN NOW() + ($2::bigint * INTERVAL '1 millisecond')
-            ELSE rate_limit_counters.reset_time
-          END,
-          updated_at = NOW()
-        RETURNING count;
-      `,
-      [identifier, windowMsSafe]
-    );
-
-    const count = rows[0]?.count ?? 0;
+    const key = `${RATE_LIMIT_PREFIX}${identifier}`;
+    const count = await redisClient.incr(key);
+    if (count === 1) {
+      await redisClient.pexpire(key, windowMsSafe);
+    }
     return count > limit;
   },
 
   getStatus: async (
     identifier: string
   ): Promise<{ count: number; resetTime: number } | null> => {
-    const { rows } = await pool.query(
-      'SELECT count, EXTRACT(EPOCH FROM reset_time) * 1000 AS reset_timestamp FROM rate_limit_counters WHERE identifier = $1',
-      [identifier]
-    );
+    const key = `${RATE_LIMIT_PREFIX}${identifier}`;
+    const [countRaw, ttl] = await Promise.all([
+      redisClient.get(key),
+      redisClient.pttl(key)
+    ]);
 
-    if (rows.length === 0) {
-      
+    if (!countRaw) {
       return null;
     }
-    
+    const count = parseInt(countRaw, 10);
+    if (Number.isNaN(count)) {
+      return null;
+    }
+
+    const ttlMs = typeof ttl === 'number' ? ttl : -1;
+    const resetTime = ttlMs > 0 ? Date.now() + ttlMs : Date.now();
     return {
-      count: rows[0].count,
-      resetTime: Number(rows[0].reset_timestamp)
+      count,
+      resetTime
     };
   },
   
   // Clean up expired records (call this periodically)
   cleanup: async (): Promise<void> => {
-    await pool.query('DELETE FROM rate_limit_counters WHERE reset_time < NOW()');
+    // Redis handles expiration automatically, so no action is needed here
   }
 };
 

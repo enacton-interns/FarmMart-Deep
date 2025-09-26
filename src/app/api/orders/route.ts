@@ -7,6 +7,7 @@ import { ProductModel } from '@/lib/models';
 import { NotificationModel } from '@/lib/models';
 import { getTokenFromRequest, verifyToken } from '@/lib/jwt';
 import { rateLimit, securityHeaders, validators } from '@/lib/security';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Get orders error:', error);
+    logger.error('Get orders error:', {error});
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -399,7 +400,11 @@ export async function POST(request: NextRequest) {
 
     // Verify total amount matches (allow small floating point differences)
     if (Math.abs(calculatedTotal - totalAmount) > 0.01) {
-      console.log('Total mismatch - calculated:', calculatedTotal, 'received:', totalAmount);
+      logger.warn('Order total mismatch detected', {
+        calculatedTotal,
+        providedTotal: totalAmount,
+        userId: decoded.id,
+      });
       return NextResponse.json(
         { error: 'Total amount mismatch' },
         { status: 400 }
@@ -475,7 +480,7 @@ export async function POST(request: NextRequest) {
                 });
               }
             } catch (notificationError) {
-              console.error('Error creating notifications:', notificationError);
+              logger.error('Error creating notifications:', {notificationError});
             }
           })()
         );
@@ -483,7 +488,7 @@ export async function POST(request: NextRequest) {
       } catch (orderError) {
         // If order creation fails, we should ideally rollback inventory changes
         // For now, log the error - in production implement proper rollback
-        console.error('Order creation failed:', orderError);
+        logger.error('Order creation failed:', {orderError});
         return NextResponse.json(
           { error: 'Failed to create order. Please try again.' },
           { status: 500 }
@@ -508,7 +513,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create order error:', error);
+    logger.error('Create order error:', {error});
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

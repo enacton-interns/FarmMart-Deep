@@ -5,7 +5,7 @@ import { FarmerModel } from '@/lib/models';
 
 import { validateRegister } from '@/lib/validation';
 import { signToken } from '@/lib/jwt';
-import { sign } from 'crypto';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       try {
         await farmerModel.create(farmerData);
       } catch (farmerError) {
-        console.error('Error creating farmer profile:', farmerError);
+        logger.error('Error creating farmer profile:', {farmerError});
         // Don't fail the entire signup if farmer creation fails
         // The farmer can try to add products later which will create the profile
       }
@@ -91,7 +91,6 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({
       message: 'Registration successful',
-      token,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -99,7 +98,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-     response.cookies.set('token', token, {
+    response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -109,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('Signup error:', error);
+    logger.error('Signup error:', {error});
     return NextResponse.json(
       { error: 'An unexpected error occurred' },
       { status: 500 }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { isValidEmail } from '@/lib/validation';
-import { sanitizeInput } from '@/lib/security';
+import { sanitizeInput } from '@/lib/security-client';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');

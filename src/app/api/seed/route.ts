@@ -6,6 +6,7 @@ import { ProductModel } from '@/lib/models';
 import { OrderModel } from '@/lib/models';
 import bcrypt from 'bcryptjs';
 import { getOptionalEnvVar } from '../../../lib/env';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   const internalSecret = getOptionalEnvVar('INTERNAL_API_SECRET');
@@ -24,11 +25,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    console.log('Connected to PostgreSQL');
+    logger.info('Seed operation started');
 
     // Clear existing data
     await pool.query('TRUNCATE TABLE products, farmers, users RESTART IDENTITY CASCADE;');
-    console.log('Cleared existing data');
+    logger.debug('Existing data truncated for reseed');
 
     // Hash passwords
     const customerPassword = await bcrypt.hash('password123', 10);
@@ -87,16 +88,7 @@ export async function POST(request: NextRequest) {
       phone: '(555) 111-2222',
     });
     
-    // Log the correct credentials for testing
-    console.log('=== LOGIN CREDENTIALS FOR TESTING ===');
-    console.log('Customer 1: john@example.com / password123');
-    console.log('Customer 2: jane@example.com / password123');
-    console.log('Farmer 1: bob@example.com / farmer123');
-    console.log('Farmer 2: sarah@example.com / farmer123');
-    console.log('Admin: admin@example.com / admin123');
-    console.log('=====================================');
-
-    console.log('Created users');
+    logger.info('Seed users created', { count: 5 });
 
     // Create farmer profiles
     const farmerProfile1 = await farmerModel.create({
@@ -125,12 +117,12 @@ export async function POST(request: NextRequest) {
       verified: false,
     });
 
-    console.log('Created farmer profiles');
+    logger.info('Farmer profiles created', { count: 2 });
 
     // Get farmer IDs (they might not be sequential)
     const farmerResult = await pool.query('SELECT id, user_id FROM farmers ORDER BY id');
     const farmerIds = farmerResult.rows.map(row => row.id);
-    console.log('Farmer IDs:', farmerIds);
+    logger.debug('Retrieved farmer identifiers for product seeding', { count: farmerIds.length });
 
     // Create products
     const products = [
@@ -233,7 +225,7 @@ export async function POST(request: NextRequest) {
       });
       createdProducts.push(createdProduct);
     }
-    console.log('Created products');
+    logger.info('Seed products created', { count: products.length });
 
     // Create some test orders
     const orders = [
@@ -300,7 +292,7 @@ export async function POST(request: NextRequest) {
     for (const order of orders) {
       await orderModel.create(order);
     }
-    console.log('Created orders');
+    logger.info('Seed orders created', { count: orders.length });
 
     return NextResponse.json({
       message: 'Database seeded successfully!',
@@ -313,7 +305,7 @@ export async function POST(request: NextRequest) {
       orders: orders.length,
     });
   } catch (error) {
-    console.error('Error seeding database:', error);
+    logger.error('Error seeding database:', {error});
     return NextResponse.json(
       { error: 'An unexpected error occurred while seeding the database' },
       { status: 500 }
