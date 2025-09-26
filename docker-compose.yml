@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: farmmarket-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongo:27017/farmmarket
+      - JWT_SECRET=your_jwt_secret_here
+      - STRIPE_SECRET_KEY=your_stripe_secret_key_here
+      - STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret_here
+      - NEXT_PUBLIC_API_URL=https://yourdomain.com
+    depends_on:
+      - mongo
+    restart: unless-stopped
+    networks:
+      - farmmarket-network
+
+  mongo:
+    image: mongo:6.0
+    container_name: farmmarket-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    networks:
+      - farmmarket-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: farmmarket-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - farmmarket-network
+
+volumes:
+  mongo-data:
+
+networks:
+  farmmarket-network:
+    driver: bridge
